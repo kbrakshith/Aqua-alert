@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AquaAlert Companion | Citizen & Driver Automated AI Interface</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            app: {
+              bg: '#0B0F19',
+              card: '#111827',
+              accent: '#00E5FF',
+              danger: '#EF4444',
+              warning: '#F59E0B',
+              safe: '#10B981'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet CSS & JS for mobile evacuation map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  
+  <style>
+    body {
+      background-color: #030712;
+      color: #F8FAFC;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .mobile-frame {
+      max-width: 440px;
+      min-height: 100vh;
+      margin: 0 auto;
+      background: #0B0F19;
+      box-shadow: 0 0 60px rgba(0, 0, 0, 0.9);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .island-pill {
+      background: #000000;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8);
+      border-radius: 28px;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .notification-popup {
+      animation: slideDownNotification 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes slideDownNotification {
+      0% { transform: translateY(-100%); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+    .pulse-danger-ring {
+      animation: pulseDanger 1.6s infinite;
+    }
+    @keyframes pulseDanger {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); }
+      50% { box-shadow: 0 0 0 16px rgba(239, 68, 68, 0); }
+    }
+  </style>
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#06b6d4">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AquaAlert">
+</head>
+<body class="antialiased selection:bg-cyan-500 selection:text-black">
+
+  <div class="mobile-frame pb-24">
+    
+    <!-- ================= DYNAMIC ISLAND / TOP SENSOR STATUS ================= -->
+    <header class="px-5 pt-3 pb-2 sticky top-0 z-50 bg-[#0B0F19]/95 backdrop-blur-md border-b border-slate-800">
+      
+      <!-- Phone Status Bar (Time, Wifi, Battery) -->
+      <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-2">
+        <span id="phone-clock" class="font-bold text-white">20:11</span>
+        
+        <!-- Center Dynamic Island Display -->
+        <div class="island-pill px-3 py-1 flex items-center gap-2">
+          <span class="flex h-2 w-2 relative">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-cyan-400"></span>
+          </span>
+          <span class="text-[10px] font-mono text-cyan-300 font-bold" id="island-status-text">AI SENTINEL ACTIVE</span>
+        </div>
+
+        <div class="flex items-center gap-1.5 text-slate-300">
+          <span class="text-[9px] text-emerald-400 font-mono">5G</span>
+          <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>
+          <span class="text-[10px] font-mono">98%</span>
+        </div>
+      </div>
+
+      <!-- Autonomous Delivery Indicator Banner -->
+      <div class="bg-cyan-950/40 p-2 rounded-xl border border-cyan-500/30 flex items-center justify-between text-xs">
+        <div class="flex items-center gap-1.5 text-[11px]">
+          <span class="p-1 rounded-md bg-cyan-500/20 text-cyan-400 font-mono font-bold">AI</span>
+          <span class="text-slate-200">Auto-Delivered by AI (No User/Creator Action Needed)</span>
+        </div>
+        <span id="auto-sweep-countdown" class="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] border border-cyan-500/20">
+          Sweep: 6s
+        </span>
+      </div>
+
+      <!-- Autonomous Simulation Auto-Play Bar -->
+      <div class="mt-2 flex items-center justify-between text-[11px] font-mono">
+        <button id="btn-toggle-auto-stream" class="px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 transition">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <span>Hands-Free Auto AI Stream: ON</span>
+        </button>
+
+        <button id="btn-toggle-voice" class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1 hover:text-white">
+          <span id="voice-icon">🔊</span>
+          <span id="voice-label">AI Voice: ON</span>
+        </button>
+      </div>
+
+    </header>
+
+    <!-- ================= FLOATING AUTO-DELIVERED AI ALERT TOAST ================= -->
+    <div id="ai-push-banner" class="notification-popup mx-4 mt-3 p-3.5 rounded-2xl bg-gradient-to-r from-red-950/95 to-slate-900 border border-red-500/60 shadow-2xl space-y-1.5">
+      <div class="flex items-center justify-between text-[10px] font-mono">
+        <div class="flex items-center gap-1.5 text-red-400 font-bold">
+          <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+          <span>🤖 AUTOMATIC AI EARLY WARNING DIRECTIVE</span>
+        </div>
+        <span class="text-slate-400" id="ai-push-timestamp">JUST NOW</span>
+      </div>
+      <h3 class="text-xs font-black text-white" id="ai-push-title">
+        CRITICAL: Soil Shear Strength Breached at KM 18 Burliar
+      </h3>
+      <p class="text-[11px] text-slate-200 leading-snug" id="ai-push-message">
+        NASA GPM satellite detected 82 mm/h cloudburst surge. ISRO radar moisture at 93%. Auto-halting bus traffic & routing village to Coonoor High School shelter.
+      </p>
+      <div class="pt-1.5 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-cyan-300">
+        <span>⚡ Zero Operator Delay (Dispatched in 1.4s)</span>
+        <span class="text-emerald-400">✓ Auto-Acknowledged</span>
+      </div>
+    </div>
+
+    <!-- Active Persona Switcher -->
+    <div class="mx-4 mt-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1.5">
+      <div class="flex items-center justify-between text-xs">
+        <span class="text-[10px] font-mono text-slate-400 uppercase">Live Citizen Persona:</span>
+        <span id="persona-badge" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+          TNSTC BUS DRIVER
+        </span>
+      </div>
+      <select id="persona-selector" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-medium">
+        <option value="driver">🚌 Ramesh Kumar (TNSTC Bus Driver — Route Coonoor-MTP NH181)</option>
+        <option value="resident">🏡 Meena Krishnan (Resident — Ward 3, Burliar Ravine)</option>
+        <option value="pilgrim">🏔️ Deepak Sharma (Pilgrim / Tourist — Kedarnath Chamoli)</option>
+        <option value="farmer">🌾 Bikash Thapa (Farmer — Trishuli Valley, Nepal Border)</option>
+      </select>
+    </div>
+
+    <!-- Vernacular Language Pill Bar -->
+    <div class="mx-4 mt-2 px-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
+      <span class="text-[10px] font-mono text-slate-400">Language:</span>
+      <div class="flex items-center gap-1 font-mono text-[11px]">
+        <button class="user-lang-btn px-2 py-0.5 rounded bg-cyan-500 text-slate-950 font-bold" data-lang="en">English</button>
+        <button class="user-lang-btn px-2 py-0.5 rounded bg-slate-800 text-slate-300" data-lang="ta">தமிழ்</button>
+        <button class="user-lang-btn px-2 py-0.5 rounded bg-slate-800 text-slate-300" data-lang="hi">हिन्दी</button>
+        <button class="user-lang-btn px-2 py-0.5 rounded bg-slate-800 text-slate-300" data-lang="ne">नेपाली</button>
+      </div>
+    </div>
+
+    <!-- ================= MAIN BODY CONTENT ================= -->
+    <main class="flex-1 px-4 mt-3 space-y-3.5">
+      
+      <!-- 1. LIVE HAZARD STATUS CARD -->
+      <div id="live-threat-card" class="rounded-2xl p-4 border bg-gradient-to-b from-red-950/80 via-slate-900 to-slate-900 border-red-500/60 relative overflow-hidden pulse-danger-ring">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center gap-2">
+            <span class="flex h-3 w-3 relative">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+            </span>
+            <span class="text-xs font-mono font-extrabold text-red-400 uppercase tracking-wider" id="threat-card-tag">CRITICAL ALERT (HIGH RISK)</span>
+          </div>
+          <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800" id="threat-lead-time">
+            ⏱️ 35 Min Evac Time
+          </span>
+        </div>
+
+        <h2 class="text-base font-black text-white mt-2 leading-tight" id="threat-headline">
+          Imminent Slope Failure on NH181 (Burliar Ghat)
+        </h2>
+        
+        <p class="text-xs text-slate-200 mt-1 leading-relaxed" id="threat-body">
+          NASA GPM rainfall (78 mm/h) has saturated cliff soil (91%). Sudden debris flow expected across KM 18-22 curve.
+        </p>
+
+        <!-- Driver / Resident Action Directive -->
+        <div class="mt-3 p-3 rounded-xl bg-red-950/90 border border-red-500/40 text-xs">
+          <div class="font-bold text-red-300 flex items-center gap-1.5" id="action-heading">
+            🛑 AUTOMATED DRIVER MANDATE (TNSTC):
+          </div>
+          <p class="text-slate-200 mt-0.5 leading-snug font-medium" id="action-detail">
+            Halt vehicle at Mettupalayam foothills gate immediately. Do not enter Burliar ghat curve. Turn passengers back to base.
+          </p>
+        </div>
+
+        <!-- Telemetry Gauges Grid -->
+        <div class="mt-3 grid grid-cols-3 gap-2 text-center font-mono text-[11px]">
+          <div class="p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+            <span class="text-[9px] text-slate-400 block uppercase">Rain Rate</span>
+            <span class="font-bold text-cyan-300" id="user-telemetry-rain">78 mm/h</span>
+          </div>
+          <div class="p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+            <span class="text-[9px] text-slate-400 block uppercase">Soil Saturation</span>
+            <span class="font-bold text-amber-300" id="user-telemetry-soil">91% (SAR)</span>
+          </div>
+          <div class="p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+            <span class="text-[9px] text-slate-400 block uppercase">Critical Slope</span>
+            <span class="font-bold text-red-300" id="user-telemetry-slope">44° Incline</span>
+          </div>
+        </div>
+
+        <!-- Interactive Voice Audio & Siren Play Buttons -->
+        <div class="mt-3 flex items-center gap-2">
+          <button id="btn-sound-alarm" class="flex-1 py-2 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-red-500/30">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+            <span id="btn-alarm-text">Play Siren & AI Voice</span>
+          </button>
+          
+          <button id="btn-share-family" class="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 flex items-center justify-center gap-1">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+            Share
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. OFFLINE EVACUATION & SAFE SHELTER RADAR MAP -->
+      <div class="rounded-2xl p-4 bg-slate-900 border border-slate-800 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="p-1 rounded bg-cyan-950 text-cyan-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </span>
+            <h3 class="text-sm font-bold text-white">Safe Evacuation Route Radar</h3>
+          </div>
+          <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
+            OFFLINE READY
+          </span>
+        </div>
+
+        <!-- Embedded Mini Leaflet Map -->
+        <div id="mobile-mini-map" class="w-full h-44 rounded-xl border border-slate-800 overflow-hidden relative">
+          <!-- Marker rendered via Leaflet -->
+        </div>
+
+        <!-- Nearest Safe Shelter -->
+        <div class="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-3 text-xs">
+          <div>
+            <div class="font-bold text-emerald-300" id="shelter-name">Coonoor Govt High School (Relief Camp)</div>
+            <div class="text-[10px] text-slate-300 mt-0.5" id="shelter-detail">Elev: 1,840m • 1.4 km uphill • Safe high ground</div>
+          </div>
+          <button onclick="alert('Routing calculated! Avoid lower ravines and take Upper Coonoor Ridge road.')" class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shrink-0">
+            Evacuate
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. GHAT ROAD PASSABILITY INDEX (DRIVER & TRAVELER VIEW) -->
+      <div class="rounded-2xl p-4 bg-slate-900 border border-slate-800 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+            Automated Road Passability Status
+          </h3>
+          <span class="text-[10px] font-mono text-slate-400">NH181 / Ghat Network</span>
+        </div>
+
+        <div class="space-y-2 text-xs">
+          <!-- Segment 1: Burliar -->
+          <div class="p-2.5 rounded-xl bg-red-950/40 border border-red-500/30 flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-slate-200">KM 14 to KM 24 (Burliar Ghat)</div>
+              <div class="text-[10px] text-red-400">AI auto-closed: Saturated slope shear failure.</div>
+            </div>
+            <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-red-500 text-white uppercase">CLOSED</span>
+          </div>
+
+          <!-- Segment 2: Kotagiri Alternate -->
+          <div class="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-slate-200">Mettupalayam – Kotagiri Route</div>
+              <div class="text-[10px] text-amber-400">Moderate rain. Heavy commercial freight diverted.</div>
+            </div>
+            <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-amber-500 text-slate-950 uppercase">CAUTION</span>
+          </div>
+
+          <!-- Segment 3: Ooty Upper Town -->
+          <div class="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-slate-200">Coonoor – Ooty Town Main Road</div>
+              <div class="text-[10px] text-emerald-400">Normal transit. No road subsidence.</div>
+            </div>
+            <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-emerald-500 text-slate-950 uppercase">OPEN</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. LIVE CITIZEN HAZARD REPORTING -->
+      <div class="rounded-2xl p-4 bg-slate-900 border border-slate-800 space-y-2.5">
+        <h3 class="text-sm font-bold text-white flex items-center justify-between">
+          <span>Report Ground Hazard to Gov</span>
+          <span class="text-[10px] font-mono text-cyan-400">Syncs to Gov Portal</span>
+        </h3>
+        <p class="text-xs text-slate-300">
+          Spotted a rockfall or rising stream? One tap sends coordinates to the Government Command Center.
+        </p>
+
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <button onclick="window.submitCitizenReport('Rockfall / Mudslide on Ghat Curve')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left flex items-center gap-2">
+            <span class="text-base">🪨</span>
+            <div>
+              <div class="font-bold text-white">Rockfall</div>
+              <div class="text-[9px] text-slate-400">Debris on road</div>
+            </div>
+          </button>
+          
+          <button onclick="window.submitCitizenReport('River / Nullah Overflow')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left flex items-center gap-2">
+            <span class="text-base">🌊</span>
+            <div>
+              <div class="font-bold text-white">Stream Overflow</div>
+              <div class="text-[9px] text-slate-400">Bridge submerged</div>
+            </div>
+          </button>
+        </div>
+
+        <div id="citizen-report-status" class="hidden p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-[11px] text-emerald-300 text-center font-mono">
+          ✓ Incident submitted! Sent to State Disaster Control Room & pinned to map.
+        </div>
+      </div>
+
+      <!-- 5. ONE-TAP EMERGENCY SOS BEACON -->
+      <div class="pt-1">
+        <button id="btn-sos" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs font-mono tracking-wider shadow-xl shadow-red-600/40 flex items-center justify-center gap-2 transition transform active:scale-95">
+          <svg class="w-4 h-4 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          ONE-TAP SOS: TRANSMIT GPS RESCUE BEACON
+        </button>
+        <p class="text-[10px] text-center text-slate-400 font-mono mt-1">
+          Transmits live coordinates to NDRF/SDRF Helpline 1077 and emergency contacts.
+        </p>
+      </div>
+
+      <!-- Navigation Links -->
+      <div class="pt-4 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-400">
+        <a href="index.html" class="text-cyan-400 hover:underline flex items-center gap-1">
+          ← Gov Command Center
+        </a>
+        <a href="api-portal.html" class="text-amber-400 hover:underline">
+          Developer API & Keys →
+        </a>
+      </div>
+
+    </main>
+
+    <!-- Bottom App Navigation Tabs (Mobile Shell) -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-[440px] mx-auto bg-slate-950/95 backdrop-blur-md border-t border-slate-800 px-6 py-2.5 flex items-center justify-between text-[10px] font-mono text-slate-400 z-50">
+      <button class="flex flex-col items-center gap-1 text-cyan-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+        <span>Radar</span>
+      </button>
+      <button onclick="document.getElementById('mobile-mini-map').scrollIntoView({behavior:'smooth'})" class="flex flex-col items-center gap-1 hover:text-white">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+        <span>Shelters</span>
+      </button>
+      <button onclick="document.getElementById('btn-sos').scrollIntoView({behavior:'smooth'})" class="flex flex-col items-center gap-1 text-red-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        <span>SOS</span>
+      </button>
+      <a href="index.html" class="flex flex-col items-center gap-1 hover:text-white">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <span>Gov Portal</span>
+      </a>
+    </nav>
+
+  </div>
+
+  <!-- JavaScript: Hands-Free Autonomous Stream & Cross-Sync Engine -->
+  <script>
+    const PERSONAS = {
+      driver: {
+        title: "TNSTC BUS DRIVER",
+        badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+        location: "Burliar Checkpoint KM 18 (Mettupalayam-Coonoor NH181)",
+        coords: [11.3412, 76.8611],
+        rain: "78 mm/h",
+        soil: "91% (Supersaturated)",
+        slope: "44° Incline",
+        headline: "Imminent Slope Failure on NH181 (Burliar Ghat)",
+        body: "NASA GPM rainfall (78 mm/h) has saturated cliff soil (91%). Sudden debris flow expected across KM 18-22 curve.",
+        actionHeading: "🛑 AUTOMATED DRIVER MANDATE (TNSTC):",
+        actionDetail: "Halt vehicle at Mettupalayam foothills gate immediately. Do not enter Burliar ghat curve. Turn passengers back to base.",
+        shelterName: "Mettupalayam Transit Bay Relief Shelter",
+        shelterDetail: "Safe foothill depot • Emergency parking space available",
+        leadTime: "⏱️ 35 Min Lead Time",
+        audioVoice: "Emergency Warning: Slope failure detected ahead on Burliar route. Halt bus immediately at checkpost."
+      },
+      resident: {
+        title: "VILLAGE RESIDENT",
+        badgeClass: "bg-red-500/20 text-red-300 border-red-500/30",
+        location: "Lower Burliar Village (Ward 3, Nilgiris)",
+        coords: [11.3534, 76.8402],
+        rain: "82 mm/h",
+        soil: "93%",
+        slope: "46°",
+        headline: "CRITICAL: Ravine Mudflow Warning for Ward 3",
+        body: "High soil pore pressure detected by ISRO EOS-04 radar. Extreme mudslide danger to lower ravine houses.",
+        actionHeading: "🏃 AUTOMATED RESIDENT EVACUATION DIRECTIVE:",
+        actionDetail: "Move immediately to Coonoor Govt High School relief center on the upper ridge. Do not walk along streams or culverts.",
+        shelterName: "Coonoor Govt High School (Relief Camp)",
+        shelterDetail: "Elev: 1,840m • 1.4 km uphill • Safe high ground",
+        leadTime: "⏱️ 28 Min Evac Time",
+        audioVoice: "Emergency Evacuation Alert: Move immediately to Coonoor High School relief shelter."
+      },
+      pilgrim: {
+        title: "KEDARNATH PILGRIM / TOURIST",
+        badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+        location: "Govindghat - Joshimath Valley Corridor",
+        coords: [30.5562, 79.3364],
+        rain: "64 mm/h",
+        soil: "88%",
+        slope: "54°",
+        headline: "Flash Flood Surge Warning in Alaknanda Basin",
+        body: "Upper glacial catchment cloudburst detected by satellite. River water level rising at 0.5m every 15 minutes.",
+        actionHeading: "⚠️ AUTOMATED PILGRIMAGE TRAVEL ADVISORY:",
+        actionDetail: "Stay inside approved concrete lodges. Do not attempt riverside footpaths or cross temporary rope bridges.",
+        shelterName: "Joshimath GMVN Tourist Complex Shelter",
+        shelterDetail: "Elev: 1,980m • Heavy reinforced building",
+        leadTime: "⏱️ 50 Min Lead Time",
+        audioVoice: "Flash Flood Warning: Stay in concrete shelter. Avoid Alaknanda riverbed."
+      },
+      farmer: {
+        title: "RIVERBANK FARMER",
+        badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+        location: "Koshi River Corridor (Nepal Border)",
+        coords: [27.7172, 85.3240],
+        rain: "82 mm/h",
+        soil: "95%",
+        slope: "48°",
+        headline: "Nepal Transboundary River Surge Warning",
+        body: "Unprecedented 260mm rainfall upstream. River embankments will breach in downstream agricultural areas.",
+        actionHeading: "🌾 AUTOMATED CATTLE & HOUSEHOLD DIRECTIVE:",
+        actionDetail: "Untie livestock and move them to higher terrace bunds immediately. Bring drinking water and battery radios to high ground.",
+        shelterName: "Trishuli Elevated Community Hall",
+        shelterDetail: "Elev: 1,420m • Food and medical supplies available",
+        leadTime: "⏱️ 120 Min Lead Time",
+        audioVoice: "Flood Warning: Move family and cattle to high terrace bunds immediately."
+      }
+    };
+
+    let currentPersona = 'driver';
+    let currentLang = 'en';
+    let mobileMap = null;
+    let userMarker = null;
+    let shelterMarker = null;
+    let autoStreamEnabled = true;
+    let voiceAlertsEnabled = true;
+    let autoSweepTimer = null;
+    let countdownSec = 6;
+
+    // Clock update
+    setInterval(() => {
+      const now = new Date();
+      document.getElementById('phone-clock').textContent = now.toTimeString().substring(0, 5);
+    }, 1000);
+
+    // Initialize Mobile Leaflet Map
+    function initMobileMap() {
+      if (typeof L === 'undefined') return;
+
+      const p = PERSONAS[currentPersona];
+      mobileMap = L.map('mobile-mini-map', {
+        center: p.coords,
+        zoom: 13,
+        zoomControl: false,
+        attributionControl: false
+      });
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 18,
+        crossOrigin: true
+      }).addTo(mobileMap);
+
+      userMarker = L.marker(p.coords).addTo(mobileMap).bindTooltip("Your Location", {permanent: true, direction: 'top'});
+
+      const shelterCoords = [p.coords[0] + 0.015, p.coords[1] - 0.012];
+      shelterMarker = L.marker(shelterCoords, {
+        icon: L.divIcon({
+          className: 'shelter-icon',
+          html: '<div class="bg-emerald-500 text-white text-[10px] font-bold p-1 rounded-full border-2 border-white shadow">SAFE</div>',
+          iconSize: [36, 24]
+        })
+      }).addTo(mobileMap).bindTooltip("Safe High Ground", {permanent: true, direction: 'bottom'});
+    }
+
+    // Switch Persona
+    function updatePersona(key) {
+      currentPersona = key;
+      const p = PERSONAS[key];
+      if (!p) return;
+
+      document.getElementById('persona-badge').textContent = p.title;
+      document.getElementById('persona-badge').className = `px-2 py-0.5 rounded text-[10px] font-mono font-bold ${p.badgeClass}`;
+      document.getElementById('threat-headline').textContent = p.headline;
+      document.getElementById('threat-body').textContent = p.body;
+      document.getElementById('action-heading').textContent = p.actionHeading;
+      document.getElementById('action-detail').textContent = p.actionDetail;
+      document.getElementById('shelter-name').textContent = p.shelterName;
+      document.getElementById('shelter-detail').textContent = p.shelterDetail;
+      document.getElementById('threat-lead-time').textContent = p.leadTime;
+
+      document.getElementById('user-telemetry-rain').textContent = p.rain;
+      document.getElementById('user-telemetry-soil').textContent = p.soil;
+      document.getElementById('user-telemetry-slope').textContent = p.slope;
+
+      if (mobileMap && userMarker && shelterMarker) {
+        mobileMap.setView(p.coords, 13);
+        userMarker.setLatLng(p.coords);
+        shelterMarker.setLatLng([p.coords[0] + 0.015, p.coords[1] - 0.012]);
+      }
+    }
+
+    document.getElementById('persona-selector').addEventListener('change', (e) => {
+      updatePersona(e.target.value);
+    });
+
+    // Voice & Audio Siren
+    function playAlarmSound(customText) {
+      const p = PERSONAS[currentPersona];
+      const speechText = customText || p.audioVoice;
+
+      if (voiceAlertsEnabled && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(speechText);
+        const langMap = { en: 'en-IN', ta: 'ta-IN', hi: 'hi-IN', ne: 'ne-NP' };
+        utterance.lang = langMap[currentLang] || 'en-IN';
+        utterance.rate = 1.05;
+        utterance.pitch = 1.1;
+        window.speechSynthesis.speak(utterance);
+      }
+
+      // Audio beeper chime via Web Audio API
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(820, ctx.currentTime);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.7);
+      } catch (err) {}
+    }
+
+    document.getElementById('btn-sound-alarm').addEventListener('click', () => {
+      playAlarmSound();
+    });
+
+    // Toggle Voice
+    document.getElementById('btn-toggle-voice').addEventListener('click', () => {
+      voiceAlertsEnabled = !voiceAlertsEnabled;
+      document.getElementById('voice-label').textContent = voiceAlertsEnabled ? 'AI Voice: ON' : 'AI Voice: OFF';
+      document.getElementById('voice-icon').textContent = voiceAlertsEnabled ? '🔊' : '🔇';
+    });
+
+    // Toggle Hands-Free Auto Stream
+    document.getElementById('btn-toggle-auto-stream').addEventListener('click', () => {
+      autoStreamEnabled = !autoStreamEnabled;
+      const btn = document.getElementById('btn-toggle-auto-stream');
+      if (autoStreamEnabled) {
+        btn.className = "px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 transition";
+        btn.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span><span>Hands-Free Auto AI Stream: ON</span>`;
+      } else {
+        btn.className = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1.5 transition";
+        btn.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-500"></span><span>Hands-Free Auto AI Stream: PAUSED</span>`;
+      }
+    });
+
+    // Language switching
+    document.querySelectorAll('.user-lang-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentLang = btn.dataset.lang;
+        document.documentElement.lang = currentLang;
+        document.querySelectorAll('.user-lang-btn').forEach(b => {
+          if (b.dataset.lang === currentLang) {
+            b.className = 'user-lang-btn px-2 py-0.5 rounded bg-cyan-500 text-slate-950 font-bold';
+          } else {
+            b.className = 'user-lang-btn px-2 py-0.5 rounded bg-slate-800 text-slate-300';
+          }
+        });
+      });
+    });
+
+    // ================= FULLY AUTOMATIC AI TELEMETRY STREAM SIMULATOR =================
+    // Automatically conveys messages without ANY human clicking or sending!
+    const MULTILANG_MESSAGES = {
+      en: [
+        {
+          title: "AI DETECTED: Cloudburst Surge in Nilgiris",
+          msg: "NASA GPM recorded sudden spike to 84 mm/h at Burliar curve. Saturated slope shear factor FS drops to 0.78.",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "Emergency Warning: Cloudburst detected at Burliar curve. Halting bus traffic automatically."
+        },
+        {
+          title: "AI ROUTE ENFORCEMENT: NH181 KM 18 Closed",
+          msg: "Debris flow threshold breached. Emergency road closure order transmitted automatically to TNSTC Coonoor depot.",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "Road Closure Enforced: Burliar ghat curve closed. Turn bus around to foothills."
+        },
+        {
+          title: "AI EVACUATION CALL: Ward 3 Ravine to Coonoor Shelter",
+          msg: "Soil pore-water pressure exceeds plastic limit. Residents auto-routed to Coonoor High School relief camp.",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "Evacuation Alert: Move family to Coonoor High School relief center."
+        }
+      ],
+      ta: [
+        {
+          title: "செயற்கை நுண்ணறிவு: நீலகிரியில் மேகவெடிப்பு",
+          msg: "நாசா GPM: புரளியூர் வளைவில் 84 மிமீ/மணி மழை. சரிவு நிலை தீவிரம் — FS=0.78.",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "அவசர எச்சரிக்கை: புரளியூர் அருகே மேகவெடிப்பு. பேருந்து நிறுத்தப்படுகிறது."
+        },
+        {
+          title: "AI: NH181 KM 18 சாலை மூடல்",
+          msg: "நிலச்சரிவு வரம்பு மீறியது. TNSTC கூனூர் டிப்போவிற்கு தானியங்கி உத்தரவு அனுப்பப்பட்டது.",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "சாலை மூடல்: புரளியூர் கணவாய் மூடப்பட்டது. பேருந்தை திரும்பவும்."
+        },
+        {
+          title: "AI வெளியேற்றம்: வார்டு 3 → கூனூர் முகாம்",
+          msg: "மண் நீர் அழுத்தம் அதிகபட்சம். குடியிருப்பாளர்கள் கூனூர் நிவாரண முகாமிற்கு அனுப்பப்படுகிறார்கள்.",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "வெளியேற்ற எச்சரிக்கை: கூனூர் உயர்நிலைப் பள்ளிக்கு சென்றுவிடுங்கள்."
+        }
+      ],
+      hi: [
+        {
+          title: "AI अलर्ट: नीलगिरी में बादल फटा",
+          msg: "NASA GPM: बुर्लियार मोड़ पर 84 मिमी/घं वर्षा। ढाल स्थिरता FS=0.78 तक गिरी।",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "आपातकाल: बुर्लियार में बादल फटा। बस यातायात स्वतः रोका जा रहा है।"
+        },
+        {
+          title: "AI: NH181 KM 18 बंद",
+          msg: "मलबा प्रवाह सीमा पार। TNSTC कूनूर डिपो को स्वचालित बंद आदेश भेजा।",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "सड़क बंद: बुर्लियार घाट बंद। बस को वापस मोड़ें।"
+        },
+        {
+          title: "AI निकासी: वार्ड 3 → कूनूर शिविर",
+          msg: "मिट्टी जल दाब सीमा पार। निवासियों को कूनूर राहत शिविर भेजा जा रहा है।",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "निकासी अलर्ट: कूनूर हाई स्कूल राहत केंद्र जाएं।"
+        }
+      ],
+      ne: [
+        {
+          title: "AI सतर्कता: नीलगिरिमा बादल फाट्यो",
+          msg: "NASA GPM: बुर्लियार घुमाउमा 84 मिमी/घन्टा वर्षा। भिरालो स्थिरता FS=0.78 भयो।",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "आपतकाल: बुर्लियारमा बादल फाट्यो। बस यातायात स्वतः रोकिँदैछ।"
+        },
+        {
+          title: "AI: NH181 KM 18 बन्द",
+          msg: "मलबा प्रवाह सीमा नाघ्यो। TNSTC कुनूर डिपोमा स्वचालित आदेश पठाइयो।",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "सडक बन्द: बुर्लियार घाँटी बन्द छ। बस फर्काउनुस्।"
+        },
+        {
+          title: "AI निकासी: वार्ड 3 → कुनूर शिविर",
+          msg: "माटोको पानी दबाब सीमा नाघ्यो। बासिन्दाहरूलाई कुनूर राहत शिविरमा पठाइँदैछ।",
+          rain: "84 mm/h", soil: "93%", slope: "44°",
+          voice: "निकासी सतर्कता: कुनूर हाइ स्कुल राहत केन्द्रमा जानुस्।"
+        }
+      ]
+    };
+
+    let autoMsgIndex = 0;
+
+    function runAutonomousAiSweep() {
+      if (!autoStreamEnabled) return;
+
+      countdownSec--;
+      const badge = document.getElementById('auto-sweep-countdown');
+      if (badge) badge.textContent = `Sweep: ${countdownSec}s`;
+
+      if (countdownSec <= 0) {
+        countdownSec = 8;
+        
+        // Auto-deliver message to the user!
+        const autoData = MULTILANG_MESSAGES[currentLang][autoMsgIndex % 3];
+        autoMsgIndex++;
+
+        // Update Dynamic Island
+        const islandText = document.getElementById('island-status-text');
+        islandText.textContent = "AI AUTO-PUSH DELIVERED";
+        islandText.className = "text-[10px] font-mono text-amber-300 font-bold animate-pulse";
+        setTimeout(() => {
+          islandText.textContent = "AI SENTINEL ACTIVE";
+          islandText.className = "text-[10px] font-mono text-cyan-300 font-bold";
+        }, 3000);
+
+        // Update push banner
+        const banner = document.getElementById('ai-push-banner');
+        banner.classList.remove('notification-popup');
+        void banner.offsetWidth; // trigger reflow
+        banner.classList.add('notification-popup');
+
+        document.getElementById('ai-push-title').textContent = autoData.title;
+        document.getElementById('ai-push-message').textContent = autoData.msg;
+        document.getElementById('ai-push-timestamp').textContent = new Date().toLocaleTimeString();
+
+        // Update telemetry
+        document.getElementById('user-telemetry-rain').textContent = autoData.rain;
+        document.getElementById('user-telemetry-soil').textContent = autoData.soil;
+
+        // Auto chime & voice if enabled
+        playAlarmSound(autoData.voice);
+
+        // Notify Gov portal via BroadcastChannel
+        if ('BroadcastChannel' in window) {
+          const ch = new BroadcastChannel('aqua-alert-sync');
+          ch.postMessage({
+            type: 'DEVICE_AUTO_DELIVERED',
+            persona: currentPersona,
+            title: autoData.title,
+            time: new Date().toLocaleTimeString()
+          });
+        }
+      }
+    }
+
+    autoSweepTimer = setInterval(runAutonomousAiSweep, 1000);
+
+    // ================= TWO-WAY CROSS-TAB SYNC =================
+    // If Government Command Portal dispatches an alert, receive it instantly!
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('aqua-alert-sync');
+      channel.onmessage = (event) => {
+        if (event.data && (event.data.type === 'GOV_ALERT_DISPATCH' || event.data.type === 'AUTONOMOUS_ALERT')) {
+          const banner = document.getElementById('ai-push-banner');
+          banner.classList.remove('notification-popup');
+          void banner.offsetWidth;
+          banner.classList.add('notification-popup');
+
+          document.getElementById('ai-push-title').textContent = `🚨 ${event.data.title || 'CRITICAL AI DIRECTIVE'}`;
+          document.getElementById('ai-push-message').textContent = event.data.message || 'Evacuate immediately.';
+          document.getElementById('ai-push-timestamp').textContent = event.data.time || new Date().toLocaleTimeString();
+
+          playAlarmSound(event.data.message);
+        }
+      };
+    }
+
+    // Citizen Crowdsource Reporting
+    window.submitCitizenReport = function(hazardType) {
+      const statusBox = document.getElementById('citizen-report-status');
+      statusBox.classList.remove('hidden');
+      statusBox.innerHTML = `✓ Incident: <b>${hazardType}</b> submitted! Pinned to Gov Command Center.`;
+      
+      if ('BroadcastChannel' in window) {
+        const channel = new BroadcastChannel('aqua-alert-sync');
+        channel.postMessage({
+          type: 'CITIZEN_REPORT',
+          hazard: hazardType,
+          persona: currentPersona,
+          time: new Date().toLocaleTimeString()
+        });
+      }
+
+      setTimeout(() => statusBox.classList.add('hidden'), 4000);
+    };
+
+    // SOS Beacon
+    document.getElementById('btn-sos').addEventListener('click', () => {
+      const p = PERSONAS[currentPersona];
+      alert(`🚨 RESCUE BEACON BROADCASTED!\n\nGPS Coordinates (${p.coords[0].toFixed(4)}, ${p.coords[1].toFixed(4)}) transmitted to SDRF / NDRF Helpline 1077 and District Disaster Control Room.`);
+    });
+
+    // Init on load
+    window.addEventListener('DOMContentLoaded', () => {
+      initMobileMap();
+    });
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        console.log('[AquaAlert SW] Registered:', reg.scope);
+      }).catch(err => console.warn('[AquaAlert SW] Registration failed:', err));
+    }
+  </script>
+</body>
+</html>
